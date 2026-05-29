@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Todo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app-wrapper">
+
+    <!-- 헤더 영역 -->
+    <header class="app-header">
+      <div class="header-accent"></div>
+      <h1 class="app-title">Todo</h1>
+      <!-- 통계: 전체 / 완료 개수 표시 -->
+      <p class="app-stats">
+        <span id="completedCount">0</span> / <span id="totalCount">0</span> 완료
+      </p>
+    </header>
+
+    <!-- Todo 입력 영역 -->
+    <section class="input-section">
+      <div class="input-wrapper">
+        <input
+          type="text"
+          id="todoInput"
+          class="todo-input"
+          placeholder="할 일을 입력하세요..."
+          maxlength="100"
+          autocomplete="off"
+        />
+        <button id="addBtn" class="add-btn" aria-label="Todo 추가">
+          <span class="add-btn-icon">+</span>
+        </button>
+      </div>
+      <!-- 빈 입력값 안내 메시지 (기본: 숨김) -->
+      <p id="errorMessage" class="error-message" aria-live="polite"></p>
+    </section>
+
+    <!-- Todo 목록 영역 -->
+    <main class="list-section">
+      <!-- Todo 항목이 없을 때 표시되는 빈 상태 -->
+      <div id="emptyState" class="empty-state">
+        <span class="empty-icon">✦</span>
+        <p>아직 할 일이 없어요</p>
+      </div>
+
+      <!-- Todo 항목들이 동적으로 추가되는 리스트 -->
+      <ul id="todoList" class="todo-list"></ul>
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
