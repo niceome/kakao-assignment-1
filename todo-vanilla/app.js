@@ -1,283 +1,278 @@
-/* ============================
-   app.js — Todo 앱 CRUD 로직
-   ============================ */
+/* =========================================================
+   app.js — Todo 앱 메인 로직
+   =========================================================
+   데이터 구조:
+   todoList = [
+     {
+       id:        number,   // 고유 식별자 (Date.now() 기반)
+       text:      string,   // 할 일 내용
+       isDone:    boolean,  // 완료 여부
+       createdAt: number    // 생성 타임스탬프
+     },
+     ...
+   ]
+   ========================================================= */
 
-// ─── 상태 ────────────────────────────────────────────────────────────────────
+// ── 상태(State) ──────────────────────────────────────────
+/** 전체 Todo 배열. 앱의 유일한 진실 공급원(Single Source of Truth) */
+let todoList = [];
 
-/**
- * todos: 앱의 핵심 상태 배열
- * 각 항목: { id: number, text: string, completed: boolean }
- */
-let todos = [];
+/** 자동 증가 ID. 새 Todo 추가 시마다 할당 */
+let nextTodoId = Date.now();
 
-/** 다음 Todo에 부여할 고유 ID (추가될 때마다 1씩 증가) */
-let nextId = 1;
+// ── DOM 참조 캐싱 ─────────────────────────────────────────
+const todoInputEl      = document.getElementById('todoInput');
+const addTodoBtnEl     = document.getElementById('addTodoBtn');
+const activeTodoListEl = document.getElementById('activeTodoList');
+const doneTodoListEl   = document.getElementById('doneTodoList');
+const activeCountEl    = document.getElementById('activeCount');
+const doneCountEl      = document.getElementById('doneCount');
+const activeEmptyMsgEl = document.getElementById('activeEmptyMsg');
+const doneEmptyMsgEl   = document.getElementById('doneEmptyMsg');
 
-// ─── DOM 참조 ─────────────────────────────────────────────────────────────────
+// ── 이벤트 바인딩 ─────────────────────────────────────────
 
-const todoInput      = document.getElementById('todoInput');
-const addBtn         = document.getElementById('addBtn');
-const todoList       = document.getElementById('todoList');
-const emptyState     = document.getElementById('emptyState');
-const errorMessage   = document.getElementById('errorMessage');
-const completedCount = document.getElementById('completedCount');
-const totalCount     = document.getElementById('totalCount');
+/** [추가] 버튼 클릭 → Todo 추가 */
+addTodoBtnEl.addEventListener('click', handleAddTodo);
 
-// ─── 초기화 ───────────────────────────────────────────────────────────────────
-
-/** 앱 최초 실행 시 UI를 초기 상태로 렌더링 */
-function init() {
-  renderTodoList();
-}
-
-// ─── 이벤트 리스너 ────────────────────────────────────────────────────────────
-
-/** 추가 버튼 클릭 시 Todo 생성 */
-addBtn.addEventListener('click', handleAddTodo);
-
-/** 입력창에서 Enter 키 입력 시 Todo 생성 */
-todoInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
-    handleAddTodo();
-  }
+/** 입력창에서 Enter 키 → Todo 추가 */
+todoInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing) handleAddTodo();
 });
 
-/** 입력 중 에러 메시지 자동 숨김 */
-todoInput.addEventListener('input', () => {
-  hideErrorMessage();
-});
-
-// ─── Todo 추가 ────────────────────────────────────────────────────────────────
+// ── 핵심 핸들러 ───────────────────────────────────────────
 
 /**
- * 입력값을 검증하고 새 Todo를 추가한다.
- * 빈 값이면 에러 메시지를 표시하고 중단한다.
+ * Todo 추가 핸들러
+ * 입력값을 검증하고 todoList에 새 항목을 삽입한 뒤 화면을 갱신한다.
  */
 function handleAddTodo() {
-  const inputText = todoInput.value.trim();
+  const rawText = todoInputEl.value.trim();
 
-  // 빈 입력값 검증
-  if (!inputText) {
-    showErrorMessage('할 일을 입력해주세요.');
-    todoInput.classList.add('input-error');
-    // 애니메이션이 끝난 뒤 클래스 제거 (재사용 가능하도록)
-    setTimeout(() => todoInput.classList.remove('input-error'), 300);
-    todoInput.focus();
+  // 빈 문자열이면 추가하지 않음
+  if (!rawText) {
+    shakeInputField();
     return;
   }
 
-  // 새 Todo 객체 생성
   const newTodo = {
-    id: nextId++,
-    text: inputText,
-    completed: false,
+    id:        nextTodoId++,
+    text:      rawText,
+    isDone:    false,
+    createdAt: Date.now(),
   };
 
-  todos.push(newTodo);
-  todoInput.value = '';   // 입력창 초기화
-  hideErrorMessage();
-  renderTodoList();
-  todoInput.focus();
+  todoList.push(newTodo);
+  todoInputEl.value = ''; // 입력창 초기화
+  renderAll();
 }
 
-// ─── Todo 삭제 ────────────────────────────────────────────────────────────────
-
 /**
- * 주어진 id의 Todo를 배열에서 제거하고 화면을 갱신한다.
- * @param {number} id - 삭제할 Todo의 id
+ * Todo 완료 / 미완료 토글
+ * @param {number} todoId - 대상 Todo의 id
  */
-function deleteTodo(id) {
-  todos = todos.filter((todo) => todo.id !== id);
-  renderTodoList();
+function handleToggleDone(todoId) {
+  const target = findTodoById(todoId);
+  if (!target) return;
+
+  target.isDone = !target.isDone;
+  renderAll();
 }
 
-// ─── Todo 완료 토글 ───────────────────────────────────────────────────────────
-
 /**
- * 주어진 id의 Todo completed 상태를 반전시킨다.
- * @param {number} id - 완료 상태를 토글할 Todo의 id
+ * Todo 수정 모드 진입
+ * 해당 아이템의 텍스트 영역을 <input>으로 교체하고 포커스를 이동한다.
+ * @param {number} todoId - 대상 Todo의 id
  */
-function toggleCompleteTodo(id) {
-  const targetTodo = todos.find((todo) => todo.id === id);
-  if (targetTodo) {
-    targetTodo.completed = !targetTodo.completed;
-  }
-  renderTodoList();
-}
+function handleStartEdit(todoId) {
+  const target    = findTodoById(todoId);
+  const itemEl    = document.querySelector(`[data-id="${todoId}"]`);
+  if (!target || !itemEl) return;
 
-// ─── Todo 수정 ────────────────────────────────────────────────────────────────
+  // 텍스트 span → edit input 교체
+  const textEl    = itemEl.querySelector('.todo-text');
+  const actionsEl = itemEl.querySelector('.todo-actions');
 
-/**
- * 수정 모드로 전환한다.
- * 텍스트를 인라인 input으로 교체하고, 수정/삭제 버튼을 저장 버튼으로 바꾼다.
- * @param {number} id - 수정할 Todo의 id
- * @param {HTMLElement} itemElement - 해당 Todo의 li 요소
- */
-function startEditTodo(id, itemElement) {
-  const targetTodo = todos.find((todo) => todo.id === id);
-  if (!targetTodo) return;
+  // 인라인 입력창 생성
+  const editInputEl = document.createElement('input');
+  editInputEl.type      = 'text';
+  editInputEl.className = 'todo-edit-input';
+  editInputEl.value     = target.text;
+  editInputEl.maxLength = 100;
 
-  // 텍스트 span → 수정용 input으로 교체
-  const textWrapper   = itemElement.querySelector('.todo-text-wrapper');
-  const actionsWrapper = itemElement.querySelector('.todo-actions');
+  // 텍스트 span 숨기고 입력창 삽입
+  textEl.replaceWith(editInputEl);
+  editInputEl.focus();
+  editInputEl.select();
 
-  textWrapper.innerHTML = `
-    <input
-      type="text"
-      class="todo-edit-input"
-      value="${escapeHtml(targetTodo.text)}"
-      maxlength="100"
-      aria-label="할 일 수정"
-    />
+  // 액션 버튼을 [저장] 버튼만 보이도록 교체
+  actionsEl.innerHTML = `
+    <button class="btn-action btn-save"   title="저장" onclick="handleSaveEdit(${todoId})">💾</button>
+    <button class="btn-action btn-delete" title="삭제" onclick="handleDeleteTodo(${todoId})">🗑</button>
   `;
 
-  // 액션 버튼 → 저장 버튼으로 교체
-  actionsWrapper.innerHTML = `
-    <button class="action-btn save-btn" title="저장" aria-label="저장">✓</button>
-  `;
-
-  const editInput = textWrapper.querySelector('.todo-edit-input');
-  const saveBtn   = actionsWrapper.querySelector('.save-btn');
-
-  // 수정 input에 포커스 및 커서를 텍스트 끝으로 이동
-  editInput.focus();
-  editInput.setSelectionRange(editInput.value.length, editInput.value.length);
-
-  // 저장 버튼 클릭 시 저장
-  saveBtn.addEventListener('click', () => saveEditTodo(id, editInput));
-
-  // Enter 키로도 저장 가능
-  editInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      saveEditTodo(id, editInput);
-    }
-    // Escape 키로 수정 취소 (원래 화면 복원)
-    if (event.key === 'Escape') {
-      renderTodoList();
-    }
+  // 입력창에서 Enter → 저장
+  editInputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  handleSaveEdit(todoId);
+    if (e.key === 'Escape') renderAll(); // 취소: 원래 상태로 복원
   });
 }
 
 /**
- * 수정 내용을 검증하고 상태에 반영한 뒤 화면을 다시 렌더링한다.
- * @param {number} id - 수정할 Todo의 id
- * @param {HTMLInputElement} editInput - 수정 중인 input 요소
+ * 수정 내용 저장
+ * 편집 모드의 입력값을 검증 후 todoList에 반영한다.
+ * @param {number} todoId - 대상 Todo의 id
  */
-function saveEditTodo(id, editInput) {
-  const newText = editInput.value.trim();
+function handleSaveEdit(todoId) {
+  const target  = findTodoById(todoId);
+  const itemEl  = document.querySelector(`[data-id="${todoId}"]`);
+  if (!target || !itemEl) return;
+
+  const editInputEl = itemEl.querySelector('.todo-edit-input');
+  const newText     = editInputEl ? editInputEl.value.trim() : '';
 
   if (!newText) {
-    // 빈 값이면 흔들기 효과만 주고 저장하지 않음
-    editInput.style.animation = 'inputShake 0.3s ease';
-    setTimeout(() => { editInput.style.animation = ''; }, 300);
-    editInput.focus();
+    editInputEl && editInputEl.classList.add('shake'); // 빈값 경고 애니메이션
     return;
   }
 
-  const targetTodo = todos.find((todo) => todo.id === id);
-  if (targetTodo) {
-    targetTodo.text = newText;
-  }
-  renderTodoList();
+  target.text = newText;
+  renderAll();
 }
 
-// ─── 렌더링 ───────────────────────────────────────────────────────────────────
-
 /**
- * todos 배열을 기반으로 전체 목록을 다시 그린다.
- * 상태(stats)와 빈 상태 표시도 함께 갱신한다.
+ * Todo 삭제
+ * @param {number} todoId - 삭제할 Todo의 id
  */
-function renderTodoList() {
-  // 기존 목록 초기화
-  todoList.innerHTML = '';
+function handleDeleteTodo(todoId) {
+  todoList = todoList.filter((todo) => todo.id !== todoId);
+  renderAll();
+}
 
-  // 빈 상태 처리
-  if (todos.length === 0) {
-    emptyState.classList.remove('hidden');
-  } else {
-    emptyState.classList.add('hidden');
-    todos.forEach((todo) => {
-      const listItem = createTodoElement(todo);
-      todoList.appendChild(listItem);
-    });
-  }
+// ── 렌더링 ────────────────────────────────────────────────
 
-  updateStats();
+/**
+ * 전체 화면 갱신 (진행 중 목록 + 완료 목록 + 카운터)
+ * 상태가 바뀔 때마다 호출되는 단일 진입점.
+ */
+function renderAll() {
+  const activeTodos = todoList.filter((t) => !t.isDone);
+  const doneTodos   = todoList.filter((t) =>  t.isDone);
+
+  renderTodoList(activeTodoListEl, activeTodos, false);
+  renderTodoList(doneTodoListEl,   doneTodos,   true);
+  updateCounters(activeTodos.length, doneTodos.length);
+  updateEmptyMessages(activeTodos.length, doneTodos.length);
 }
 
 /**
- * 단일 Todo 객체를 받아 li DOM 요소를 생성하고 반환한다.
- * @param {{ id: number, text: string, completed: boolean }} todo
+ * 특정 <ul> 요소에 Todo 아이템들을 렌더링한다.
+ * @param {HTMLElement} listEl   - 렌더링 대상 <ul>
+ * @param {Array}       todos    - 렌더링할 Todo 배열
+ * @param {boolean}     isDoneSection - 완료 섹션 여부
+ */
+function renderTodoList(listEl, todos, isDoneSection) {
+  listEl.innerHTML = ''; // 기존 목록 초기화
+
+  todos.forEach((todo) => {
+    const li = createTodoItemElement(todo, isDoneSection);
+    listEl.appendChild(li);
+  });
+}
+
+/**
+ * 하나의 Todo 항목에 해당하는 <li> DOM 요소를 생성해 반환한다.
+ * @param {Object}  todo          - Todo 데이터 객체
+ * @param {boolean} isDoneSection - 완료 섹션 여부 (버튼 종류 결정)
  * @returns {HTMLLIElement}
  */
-function createTodoElement(todo) {
+function createTodoItemElement(todo, isDoneSection) {
   const li = document.createElement('li');
-  li.className = `todo-item${todo.completed ? ' todo-item--completed' : ''}`;
-  li.dataset.id = todo.id;
+  li.className = `todo-item${todo.isDone ? ' is-done' : ''}`;
+  li.dataset.id = todo.id; // 이벤트 핸들러에서 id 참조용
 
-  li.innerHTML = `
-    <div class="todo-text-wrapper">
-      <span class="todo-text">${escapeHtml(todo.text)}</span>
-    </div>
-    <div class="todo-actions">
-      <button class="action-btn complete-btn" title="${todo.completed ? '미완료로 변경' : '완료'}" aria-label="${todo.completed ? '미완료로 변경' : '완료'}">
-        ${todo.completed ? '↩' : '✓'}
-      </button>
-      <button class="action-btn edit-btn" title="수정" aria-label="수정">✎</button>
-      <button class="action-btn delete-btn" title="삭제" aria-label="삭제">✕</button>
-    </div>
-  `;
+  // 체크박스
+  const checkbox       = document.createElement('input');
+  checkbox.type        = 'checkbox';
+  checkbox.className   = 'todo-checkbox';
+  checkbox.checked     = todo.isDone;
+  checkbox.title       = todo.isDone ? '미완료로 되돌리기' : '완료로 표시';
+  checkbox.addEventListener('change', () => handleToggleDone(todo.id));
 
-  // 완료 버튼 이벤트
-  li.querySelector('.complete-btn').addEventListener('click', () => toggleCompleteTodo(todo.id));
+  // 텍스트
+  const textSpan       = document.createElement('span');
+  textSpan.className   = 'todo-text';
+  textSpan.textContent = todo.text;
 
-  // 수정 버튼 이벤트
-  li.querySelector('.edit-btn').addEventListener('click', () => startEditTodo(todo.id, li));
+  // 액션 버튼 영역
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'todo-actions';
 
-  // 삭제 버튼 이벤트
-  li.querySelector('.delete-btn').addEventListener('click', () => deleteTodo(todo.id));
+  if (!isDoneSection) {
+    // 진행 중 섹션: [수정] [삭제] 버튼
+    actionsDiv.innerHTML = `
+      <button class="btn-action btn-edit"   title="수정" onclick="handleStartEdit(${todo.id})">✏️</button>
+      <button class="btn-action btn-delete" title="삭제" onclick="handleDeleteTodo(${todo.id})">🗑</button>
+    `;
+  } else {
+    // 완료 섹션: [되돌리기] [삭제] 버튼
+    actionsDiv.innerHTML = `
+      <button class="btn-action btn-undo"   title="되돌리기" onclick="handleToggleDone(${todo.id})">↩️</button>
+      <button class="btn-action btn-delete" title="삭제"     onclick="handleDeleteTodo(${todo.id})">🗑</button>
+    `;
+  }
+
+  li.appendChild(checkbox);
+  li.appendChild(textSpan);
+  li.appendChild(actionsDiv);
 
   return li;
 }
 
-// ─── 통계 업데이트 ────────────────────────────────────────────────────────────
-
-/** 헤더의 완료/전체 카운트를 최신 상태로 갱신한다. */
-function updateStats() {
-  const total     = todos.length;
-  const completed = todos.filter((todo) => todo.completed).length;
-  completedCount.textContent = completed;
-  totalCount.textContent     = total;
+/**
+ * 헤더의 진행 중 / 완료 카운터를 업데이트한다.
+ * @param {number} activeCount - 진행 중인 Todo 수
+ * @param {number} doneCount   - 완료된 Todo 수
+ */
+function updateCounters(activeCount, doneCount) {
+  activeCountEl.textContent = activeCount;
+  doneCountEl.textContent   = doneCount;
 }
-
-// ─── 에러 메시지 ──────────────────────────────────────────────────────────────
 
 /**
- * 에러 메시지를 표시한다.
- * @param {string} message - 표시할 메시지 텍스트
+ * 목록이 비어 있을 때 안내 메시지 표시 여부를 제어한다.
+ * @param {number} activeCount
+ * @param {number} doneCount
  */
-function showErrorMessage(message) {
-  errorMessage.textContent = message;
-  errorMessage.classList.add('error-message--visible');
+function updateEmptyMessages(activeCount, doneCount) {
+  activeEmptyMsgEl.style.display = activeCount === 0 ? 'block' : 'none';
+  doneEmptyMsgEl.style.display   = doneCount   === 0 ? 'block' : 'none';
 }
 
-/** 에러 메시지를 숨긴다. */
-function hideErrorMessage() {
-  errorMessage.classList.remove('error-message--visible');
-}
-
-// ─── 유틸리티 ─────────────────────────────────────────────────────────────────
+// ── 유틸리티 ─────────────────────────────────────────────
 
 /**
- * XSS 방지를 위해 사용자 입력 문자열의 HTML 특수문자를 이스케이프한다.
- * @param {string} str
- * @returns {string}
+ * id로 todoList에서 특정 항목을 찾아 반환한다.
+ * @param {number} todoId
+ * @returns {Object|undefined}
  */
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.appendChild(document.createTextNode(str));
-  return div.innerHTML;
+function findTodoById(todoId) {
+  return todoList.find((todo) => todo.id === todoId);
 }
 
-// ─── 앱 시작 ──────────────────────────────────────────────────────────────────
-init();
+/**
+ * 입력창에 흔들림 애니메이션을 적용해 빈 입력을 알린다.
+ * (CSS animation이 없으므로 클래스 토글로 구현)
+ */
+function shakeInputField() {
+  todoInputEl.style.borderColor = '#f44336';
+  todoInputEl.style.boxShadow   = '0 0 0 3px rgba(244,67,54,0.15)';
+  setTimeout(() => {
+    todoInputEl.style.borderColor = '';
+    todoInputEl.style.boxShadow   = '';
+  }, 600);
+  todoInputEl.focus();
+}
+
+// ── 초기 렌더 ─────────────────────────────────────────────
+renderAll();
