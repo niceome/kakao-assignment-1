@@ -25,7 +25,7 @@ export default function TodoEditForm({ todo }: { todo: Todo }) {
             return;
         }
 
-        const res = await fetch(`${API_URL}/todos/${todo.id}`, {
+        const res = await fetch(`/api/todos/${todo.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: trimmed, completed }),
@@ -41,7 +41,7 @@ export default function TodoEditForm({ todo }: { todo: Todo }) {
     }
 
     async function handleDelete() {
-        const res = await fetch(`${API_URL}/todos/${todo.id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' });
         if (!res.ok) {
           setError('삭제에 실패했어요.');
           return;

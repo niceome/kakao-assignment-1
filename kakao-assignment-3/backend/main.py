@@ -1,9 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
@@ -33,16 +33,17 @@ class TodoCreate(BaseModel):
 
 class TodoUpdate(BaseModel):
     text: str | None = None
-    date: bool | None = None
+    completed: bool | None = None
+    date: str | None = None
 
 class TodoResponse(BaseModel):
     id: int
     text: str
-    date: str
     completed: bool
+    date: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
     
 
 # 테이블 생성
@@ -73,7 +74,7 @@ def get_db():
 
 # 엔드포인트 구현
 # API 목록에 해당되는 부분을 직접 구현해보세요.
-@app.get("/todos", response_model=List[TodoResponse])
+@app.get("/todos", response_model=list[TodoResponse])
 def get_todos(db: Session = Depends(get_db)):
     return db.query(Todo).all()
 
@@ -87,10 +88,17 @@ def create_todo(todo: TodoCreate, db: Session = Depends(get_db)):
     return new_todo
 
 
+@app.get("/todos/{todo_id}", response_model=TodoResponse)
+def get_todo(todo_id: int, db: Session = Depends(get_db)):
+    target = db.query(Todo).filter(Todo.id == todo_id).first()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    return target
+
+
 @app.put("/todos/{todo_id}", response_model=TodoResponse)
 def update_todo(todo_id: int, todo: TodoUpdate, db: Session = Depends(get_db)):
-
-    target = db.query(Todo).filter(Todo.id == todo.id).first()
+    target = db.query(Todo).filter(Todo.id == todo_id).first()
 
     if target is None:
         raise HTTPException(status_code=404, detail="Todo not found")
@@ -99,7 +107,8 @@ def update_todo(todo_id: int, todo: TodoUpdate, db: Session = Depends(get_db)):
         target.text = todo.text
     if todo.completed is not None:
         target.completed = todo.completed
-
+    if todo.date is not None:
+        target.date = todo.date
 
     db.commit()
     db.refresh(target)

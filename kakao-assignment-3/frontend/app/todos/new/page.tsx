@@ -18,7 +18,7 @@ export default function NewTodoPage() {
         return;
       }
    
-      const res = await fetch(`${API_URL}/todos`, {
+      const res = await fetch('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: trimmed, date: formatDateKey(getTodayNormal()) }),

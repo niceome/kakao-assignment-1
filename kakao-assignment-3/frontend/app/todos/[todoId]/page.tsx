@@ -10,8 +10,9 @@ async function getTodo(id: string) {
 }
 
 export default async function TodoDetailPage({ params }: {
-    params: { todoId: string } }) {
-        const todo = await getTodo(params.todoId);
+    params: Promise<{ todoId: string }> }) {
+        const { todoId } = await params;
+        const todo = await getTodo(todoId);
 
         return <TodoEditForm todo={todo} />;
     }
